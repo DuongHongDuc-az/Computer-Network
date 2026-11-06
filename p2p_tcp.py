@@ -1,11 +1,13 @@
 import socket
 import threading
 import time
+import os
 from typing import Tuple, Dict, Any, Optional
-from prompt_toolkit import prompt
-from prompt_toolkit.patch_stdout import patch_stdout
+import os
 connected_peers = {}
-last_seen = {}
+DOWNLOAD_DIR = "download"
+conn_lock = threading.Lock()
+
 def recv_exact(sock, n_bytes):
     data = bytearray()
     while len(data) < n_bytes:
@@ -21,20 +23,20 @@ def recv_until_delimeter(sock, delimeter = b'|'):
         chunk = sock.recv(1)
         if not chunk:
             return None
-        if chunk == bytes:
+        if chunk == delimeter:
             break
         buffer.extend(chunk)
     return bytes(buffer)
 
 def send_hi(sock, name, tcp_port):
-    header = f"HI|{name}|{tcp_port}".encode('utf-8')
+    header = f"HI|{name}|{tcp_port}|".encode('utf-8')
     sock.send(header)
 
 def send_msg(sock, text):
     payload_bytes = text.encode('utf-8')
     length = len(payload_bytes)
     header = f"MSG|{length}|".encode('utf-8')
-    sock.send(header + payload_bytes)
+    sock.sendall(header + payload_bytes)
     
 def send_bye(sock):
     sock.send(b"BYE|")
@@ -94,90 +96,57 @@ def recv_frame(sock):
     else:
         raise ValueError(f"Unable to recognize frame type: {fram_type}!")
 
+def _prompt():
+    print(">", end="", flush=True)
 def tcp_receiver_thread(sock):
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     while True:
         try:
             result = recv_frame(sock)
             if result is None:
                 print("UNCONNECTED!")
+                _prompt()
                 break
             
             frame_type, data = result
             
             if frame_type == "HI":
                 print(f"\n Successful conected with {data['name']} (Port:{data['tcp_port']})")
+                peer_name = data['name']
+                with conn_lock:
+                    connected_peers[peer_name] = sock
+                print(f"\r[+] {peer_name} connected (port {data['tcp_port']}).")
+                _prompt()
             elif frame_type == "MSG":
-                print(f"\n[Message]: {data['text']}")
+                print(f"\r[{peer_name or '?'}]: {data['text']}")
+                _prompt()
             elif frame_type == "FILE":
-                with open(f"dowload/{data['filename']}", "wb") as f:
+                safe_name = os.path.basename(data['filename'] or "unnamed")
+                path  = os.path.join(DOWNLOAD_DIR, safe_name)
+                with open(path, "wb") as f:
                     f.write(data['data'])
+                print(f"Received file from {peer_name or '?'}: {path} ({data['size']} bytes)")
+                _prompt()
             elif frame_type == "BYE":
                 print("\nCounterpart have closed.")
+                _prompt()
                 break;
         except Exception as e:
             print(f"\n Error: {e}")
             break
-    sock.close()
+    with conn_lock:
+        if peer_name and connected_peers.get(peer_name) is sock:
+            del connected_peers[peer_name]
+    try:
+        sock.close()
+    except OSError:
+        pass
 
 def tcp_acceptor(server_socket):
     while True:
         try:
-            conn, addr = server_socket.accept()
-            print(f"Success conection with {addr}")
-
-            client_thread = threading.Thread(
-                target = tcp_receiver_thread,
-                args = (conn, )
-            )
-            
-            client_thread.daemon = True
-            client_thread.start()
+           conn, addr = server_socket.accept()
+           threading.Thread(target=tcp_receiver_thread, args=(conn, ), daemon=True).start()
         except Exception as e:
             print(f"\nError Acceptor Threading or Server closed: {e}")
             break
-    
-def send_messages():
-    current_chat_peer = ""
-    
-    with patch_stdout():
-        while True:
-            message = prompt("You: ")
-            
-            if message.startswith('/'):
-                parts = message.split()
-                command = parts[0]
-                if command == '/chat':
-                    target = parts[1]
-                    if target in connected_peers:
-                        current_chat_peer = target
-                        print(f"Set Connection with {target}")
-                    else:
-                        print("UNCONECTED")
-                elif command == '/list':
-                    print("\n--- List Online ---")
-                    for name, last_time in list(last_seen.items()):
-                        if time.time() - last_time <= 10:
-                            print(f"- {name}")
-                        else:
-                            del connected_peers[name]
-                            del last_seen[name]
-            else:
-                if current_chat_peer != "":
-                    sock = connected_peers[current_chat_peer]
-                    send_msg(sock, message)
-                else:
-                    print("You have chosen person to chat. Please use /chat <Username>")
-HOST = '127.0.0.1'
-PORT = 1025
-your_name = input("Enter your name: ")
-client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-client_socket.connect((HOST, PORT))
-send_hi(client_socket, your_name, PORT)
-t1 = threading.Thread(target=send_messages)
-t1.start()
-t2 = threading.Thread(target=tcp_receiver_thread, args=(client_socket,))
-t2.start()
-t2.join()
-
-client_socket.close()
-print("End Connection!")
