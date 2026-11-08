@@ -30,7 +30,7 @@ def recv_until_delimeter(sock, delimeter = b'|'):
 
 def send_hi(sock, name, tcp_port):
     header = f"HI|{name}|{tcp_port}|".encode('utf-8')
-    sock.send(header)
+    sock.sendall(header)
 
 def send_msg(sock, text):
     payload_bytes = text.encode('utf-8')
@@ -39,12 +39,27 @@ def send_msg(sock, text):
     sock.sendall(header + payload_bytes)
     
 def send_bye(sock):
-    sock.send(b"BYE|")
+    sock.sendall(b"BYE|")
 
 def send_file_frame(sock, filename, file_bytes):
     size = len(file_bytes)
     header = f"FILE|{filename}|{size}|".encode('utf-8')
-    sock.send(header + file_bytes)
+    sock.sendall(header + file_bytes)
+    
+def close_connection(sock, say_bye=True):
+    if say_bye:
+        try:
+            send_bye(sock)
+        except OSError:
+            pass
+    try:
+        sock.shutdown(socket.SHUT_RDWR)
+    except OSError:
+        pass
+    try:
+        sock.close()
+    except OSError:
+        pass
     
 def recv_frame(sock):
     frame_type_bytes = recv_until_delimeter(sock, b'|')
@@ -98,7 +113,7 @@ def recv_frame(sock):
 
 def _prompt():
     print(">", end="", flush=True)
-def tcp_receiver_thread(sock):
+def tcp_receiver_thread(sock, peer_name=None):
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     while True:
         try:

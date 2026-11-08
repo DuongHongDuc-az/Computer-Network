@@ -6,20 +6,17 @@ import threading
 import time
 import p2p_radar 
 from p2p_radar import (init_radar, online_peers, peer_lock,
-                       broadcaster_thread, listener_thread, timeout_checker_thread)
+                       broadcaster_thread, listener_thread, timeout_checker_thread,
+                       broadcast_leave)
 from p2p_tcp import (connected_peers, conn_lock, send_hi, send_msg, send_bye,
-                     send_file_frame, tcp_receiver_thread, tcp_acceptor)
+                     send_file_frame, tcp_receiver_thread, tcp_acceptor,
+                     close_connection)
 
 MAX_FILE_SIZE = 50*1024*1024 # 50MB
 
 def get_connection(name):
     with conn_lock:
-        sock = connected_peers.pop(name, None)
-    if sock:
-        try:
-            sock.close()
-        except OSError:
-            pass
+        return connected_peers.get(name)
         
 def drop_connection(name):
     with conn_lock:
@@ -38,8 +35,9 @@ def cmd_chat(parts, my_name, my_port):
     
     if target == my_name:
         print("You cannot chat with yourself.")
+        return
     if  get_connection(target):
-        print(f"Alrady connectec to {target}")
+        print(f"Alrady connectecd to {target}")
         return
     with peer_lock:
         info = online_peers.get(target)
@@ -134,13 +132,18 @@ def cmd_conns():
         print("Active chats: " + ", ".join(names))
  
  
-def shutdown():
+def shutdown(server_sock=None):
     with conn_lock:
-        items = list(connected_peers.items())
-    for _, sock in items:
+        socks = list(connected_peers.values())
+        connected_peers.clear()
+    for sock in socks:
+        close_connection(sock, say_bye=True)
+    
+    broadcast_leave()
+    
+    if server_sock:
         try:
-            send_bye(sock)
-            sock.close()
+            server_sock.close()
         except OSError:
             pass
  
@@ -202,7 +205,7 @@ if __name__ == "__main__":
                 cmd_msg(command)
             elif parts[0] == "/file":
                 cmd_file(command)
-            elif parts[0] == "bye":
+            elif parts[0] == "/bye":
                 cmd_bye(command)
             elif parts[0] == "/conns":
                 cmd_conns()               

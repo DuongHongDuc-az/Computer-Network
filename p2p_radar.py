@@ -11,7 +11,7 @@ my_status = "online"
 online_peers = {}             
 peer_lock = threading.Lock() 
 
-def init_stauts(status):
+def init_status(status):
     global my_status
     my_status = status
 
@@ -45,6 +45,20 @@ def broadcaster_thread():
             pass 
             
         time.sleep(3) 
+        
+def broadcast_leave():
+    global leaving
+    leaving = True
+    udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    message = f"LEAVE|{my_name}|{my_port}".encode('utf-8')
+    for _ in range(2): 
+        try:
+            udp_sock.sendto(message, ('255.255.255.255', 9999))
+        except Exception:
+            pass
+        time.sleep(0.05)
+    udp_sock.close()
 
 def listener_thread():
     udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
