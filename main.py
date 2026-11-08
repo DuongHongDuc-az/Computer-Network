@@ -156,6 +156,11 @@ if __name__ == "__main__":
         if my_name and "|" not in my_name:
             break
         print("[!] Name cannot be empty or contain '|'. Please try again.")
+        continue
+        for name in online_peers.values():
+            if name['name'] == my_name:
+                print("[!] Name already in use. Please choose another name.")
+                break
         
     server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_sock.bind(('', 0))
