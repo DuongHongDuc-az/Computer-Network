@@ -5,7 +5,7 @@ import sys
 import threading
 import time
 import p2p_radar 
-from p2p_radar import (init_radar, online_peers, peer_lock,
+from p2p_radar import (init_radar, init_status, online_peers, peer_lock,
                        broadcaster_thread, listener_thread, timeout_checker_thread,
                        broadcast_leave)
 from p2p_tcp import (connected_peers, conn_lock, send_hi, send_msg, send_bye,
@@ -167,14 +167,6 @@ if __name__ == "__main__":
     my_port = server_sock.getsockname()[1]
  
     init_radar(my_name, my_port) 
-    
-    with peer_lock:
-        online_peers[my_name] = {
-            "ip": "127.0.0.1",
-            "port": my_port,
-            "status": p2p_radar.my_status,
-            "last_seen": time.time()
-        }
 
     print(f"\n[*] Starting Radar for [{my_name}]...")
     print("Supported commands: /chat <name>, /list, /msg <name> <text>, /status <status_name>, /quit")
@@ -218,11 +210,7 @@ if __name__ == "__main__":
                     new_status = parts[1].strip().lower() 
                     
                     if new_status in ["online", "busy", "away"]:
-                        p2p_radar.my_status = new_status
-                   
-                        with peer_lock:
-                            if my_name in online_peers:
-                                online_peers[my_name]['status'] = new_status
+                        init_status(new_status)
                                 
                         print(f"[*] Status changed to: {new_status}")
                     else:

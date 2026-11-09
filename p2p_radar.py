@@ -13,23 +13,22 @@ peer_lock = threading.Lock()
 
 def init_status(status):
     global my_status
-    my_status = status
+    with peer_lock:
+        if my_name in online_peers:
+            online_peers[my_name]['status'] = status
 
 def init_radar(name, port):
     global my_name, my_port
     my_name = name
     my_port = port
 
-def find_random_port():
-    while True:
-        tmp_port = random.randint(1024, 65535)
-        test_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            test_sock.bind(('', tmp_port))
-            test_sock.close() 
-            return tmp_port
-        except OSError:
-            pass
+    with peer_lock:
+        online_peers[my_name] = {
+            "ip": "127.0.0.1",
+            "port": my_port,
+            "status": my_status,
+            "last_seen": time.time()
+        }
 
 def broadcaster_thread():
     global my_status
@@ -90,12 +89,20 @@ def listener_thread():
                         "status": peer_status,
                         "last_seen": time.time()
                     }
+            elif len(parts) >= 3 and parts[0] == "LEAVE":
+                peer_name = parts[1]
+
+                with peer_lock:
+                    if peer_name in online_peers:
+                        del online_peers[peer_name]
+                        print(f"\r[!] {peer_name} has left the network.")
+                        print("> ", end="", flush=True)
         except Exception:
             pass
 
 def timeout_checker_thread():
     while True:
-        time.sleep(1000) 
+        time.sleep(3) 
         current_time = time.time()
         
         with peer_lock:
