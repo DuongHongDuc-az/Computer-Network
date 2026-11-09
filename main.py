@@ -37,12 +37,12 @@ def cmd_chat(parts, my_name, my_port):
         print("You cannot chat with yourself.")
         return
     if  get_connection(target):
-        print(f"Alrady connectecd to {target}")
+        print(f"Already connectecd to {target}")
         return
     with peer_lock:
         info = online_peers.get(target)
     if not info:
-        print("Usrs is not online!")
+        print("Users is not online!")
         return
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

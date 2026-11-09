@@ -13,6 +13,8 @@ peer_lock = threading.Lock()
 
 def init_status(status):
     global my_status
+    my_status = status
+    
     with peer_lock:
         if my_name in online_peers:
             online_peers[my_name]['status'] = status
