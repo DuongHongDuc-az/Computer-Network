@@ -158,13 +158,6 @@ if __name__ == "__main__":
         my_name = input("Enter your name: ").strip()
         if not my_name or "|" in my_name:
             print("[!] Name cannot be empty or contain '|'. Please try again.")
-        is_duplicate = False
-        for name in online_peers:
-            if name == my_name:
-                is_duplicate = True
-                break
-        if is_duplicate:
-            print("[!] Name already in use. Please choose another name.")
             continue
         break
         
