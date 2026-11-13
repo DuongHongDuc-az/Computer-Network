@@ -28,7 +28,7 @@ chat_history = None
 peer_list_frame = None
 chat_target_lbl = None
 
-# Trạng thái Mạng & Ứng dụng
+
 my_name = ""
 my_port = 0
 server_sock = None
@@ -70,12 +70,12 @@ def show_login_screen():
     ctk.CTkLabel(card, text="Tên hiển thị", font=("Arial", 11), text_color="#a9b1d6").pack(anchor="w", padx=40)
     
     entry_name = ctk.CTkEntry(card, placeholder_text="Nhập tên của bạn...", width=320, height=40, corner_radius=8, fg_color="#1f2335", border_width=1)
-    entry_name.pack(pady=(5, 20))
+    entry_name.pack(pady=(5, 10))
     entry_name.bind('<Return>', lambda e: process_login())
 
     btn_start = ctk.CTkButton(card, text="Bắt đầu trò chuyện ➔", width=320, height=40, corner_radius=8, 
                               fg_color="#2ecc71", hover_color="#27ae60", text_color="black", font=("Arial", 14, "bold"), command=process_login)
-    btn_start.pack()
+    btn_start.pack(pady=(5,20))
 
 def show_main_chat_screen():
     global main_chat_frame, sidebar_frame, chat_history, entry_msg, peer_list_frame, chat_target_lbl

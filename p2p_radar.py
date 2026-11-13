@@ -83,7 +83,7 @@ def listener_thread():
                 with peer_lock:
                     if peer_name not in online_peers:
                         print(f"\r[*] Radar detected new peer: {peer_name} ({addr[0]}:{peer_port})")
-                        print("> ", end="", flush=True)
+                       
                         
                     online_peers[peer_name] = {
                         "ip": addr[0],
@@ -98,7 +98,6 @@ def listener_thread():
                     if peer_name in online_peers:
                         del online_peers[peer_name]
                         print(f"\r[!] {peer_name} has left the network.")
-                        print("> ", end="", flush=True)
         except Exception:
             pass
 
@@ -120,4 +119,3 @@ def timeout_checker_thread():
             for dead_peer in blacklist:
                 del online_peers[dead_peer]
                 print(f"\r[!] {dead_peer} disconnected (Timeout).")
-                print("> ", end="", flush=True)

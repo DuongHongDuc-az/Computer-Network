@@ -111,8 +111,6 @@ def recv_frame(sock):
     else:
         raise ValueError(f"Unable to recognize frame type: {fram_type}!")
 
-def _prompt():
-    print(">", end="", flush=True)
 def tcp_receiver_thread(sock, peer_name=None):
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     while True:
@@ -120,7 +118,7 @@ def tcp_receiver_thread(sock, peer_name=None):
             result = recv_frame(sock)
             if result is None:
                 print("UNCONNECTED!")
-                _prompt()
+               
                 break
             
             frame_type, data = result
@@ -131,20 +129,20 @@ def tcp_receiver_thread(sock, peer_name=None):
                 with conn_lock:
                     connected_peers[peer_name] = sock
                 print(f"\r[+] {peer_name} connected (port {data['tcp_port']}).")
-                _prompt()
+                
             elif frame_type == "MSG":
                 print(f"\r[{peer_name or '?'}]: {data['text']}")
-                _prompt()
+               
             elif frame_type == "FILE":
                 safe_name = os.path.basename(data['filename'] or "unnamed")
                 path  = os.path.join(DOWNLOAD_DIR, safe_name)
                 with open(path, "wb") as f:
                     f.write(data['data'])
                 print(f"Received file from {peer_name or '?'}: {path} ({data['size']} bytes)")
-                _prompt()
+                
             elif frame_type == "BYE":
                 print("\nCounterpart have closed.")
-                _prompt()
+                
                 break;
         except Exception as e:
             print(f"\n Error: {e}")
