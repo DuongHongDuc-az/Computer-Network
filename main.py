@@ -14,10 +14,11 @@ from p2p_radar import (init_radar, init_status, online_peers, peer_lock,
                        broadcaster_thread, listener_thread, timeout_checker_thread,
                        broadcast_leave)
 from p2p_tcp import (connected_peers, conn_lock, send_hi, send_msg, send_bye,
-                     send_file_frame, tcp_receiver_thread, tcp_acceptor,
-                     close_connection)
+                     tcp_receiver_thread, tcp_acceptor, close_connection)
+from file_sender import start_send_file, cancel_all
 
 MAX_FILE_SIZE = 50*1024*1024 # 50MB
+SCAN_SECONDS = 3.5
 
 def get_connection(name):
     with conn_lock:
@@ -94,22 +95,19 @@ def cmd_file(command):
     if not sock:
         print(f"[!] Not connected to {target}. Use /chat {target} first.")
         return
-    if not os.path.isfile(path):
-        print(f"[!] File not found: {path}")
-        return
-    size = os.path.getsize(path)
-    if size > MAX_FILE_SIZE:
-        print(f"[!] File too large ({size} bytes, max {MAX_FILE_SIZE}).")
-        return
- 
+    def on_progress(tr, pct):
+        print(f"Sending {tr.filename} -> {target}: {pct}")
+        
+    def on_done(tr, ok, err):
+        if ok:
+            print(f"Send {tr.filename} ({tr.size} bytes) to {target}")
+        else:
+            print(f"Send {tr.filename} failed: {err}")
     try:
-        with open(path, "rb") as f:
-            data = f.read()
-        send_file_frame(sock, os.path.basename(path), data)
-        print(f"[+] Sent {os.path.basename(path)} ({size} bytes) to {target}")
-    except OSError as e:
-        print(f"[!] Send failed: {e}")
-        drop_connection(target)
+        tr = start_send_file(sock, path, target, on_progress, on_done)
+        print(f"Starting {tr.filename} ({tr.size} bytes) in background")
+    except (ValueError, OSError) as e:
+        print(f"{e}")
 
 def cmd_bye(parts):
     if len(parts) < 2:
@@ -138,6 +136,7 @@ def cmd_conns():
  
  
 def shutdown(server_sock=None):
+    cancel_all()
     with conn_lock:
         socks = list(connected_peers.values())
         connected_peers.clear()
@@ -193,7 +192,7 @@ async def main():
                                 cmd_chat(parts, my_name, my_port)
                             elif parts[0] == "/msg":
                                 cmd_msg(command)
-                            elif parts[0] == "/file":
+                            elif parts[0] in ("/file", "/sendfile"):
                                 cmd_file(command)
                             elif parts[0] == "/bye":
                                 cmd_bye(command)
@@ -226,7 +225,7 @@ async def main():
                                     
                             elif command == "/quit":
                                 print("[*] Disconnecting and exiting...")
-                                shutdown()
+                                shutdown(server_sock)
                                 sys.exit(0)
                                 
                             else:
@@ -239,4 +238,7 @@ async def main():
     
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass

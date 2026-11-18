@@ -8,6 +8,28 @@ connected_peers = {}
 DOWNLOAD_DIR = "download"
 conn_lock = threading.Lock()
 
+MAX_FILE_SIZE = 50 * 1024 * 1024
+CHUNK_SIZE = 64 * 1024
+MAX_CHUNK_RECV = 256 * 1024
+
+_send_locks = {}
+_send_locks_guard = threading.Lock()
+
+def _get_send_lock(sock):
+    with _send_locks_guard:
+        lock = _send_locks.get(sock)
+        if lock is None:
+            lock = _send_locks[sock] = threading.Lock()
+        return lock
+
+def _drop_send_lock(sock):
+    with _send_locks_guard:
+        _send_locks.pop(sock, None)
+
+def _send(sock, data: bytes):
+    with _get_send_lock(sock):
+        sock.sendall(data)
+
 def recv_exact(sock, n_bytes):
     data = bytearray()
     while len(data) < n_bytes:
@@ -30,21 +52,29 @@ def recv_until_delimeter(sock, delimeter = b'|'):
 
 def send_hi(sock, name, tcp_port):
     header = f"HI|{name}|{tcp_port}|".encode('utf-8')
-    sock.sendall(header)
+    _send(sock, header)
 
 def send_msg(sock, text):
     payload_bytes = text.encode('utf-8')
     length = len(payload_bytes)
     header = f"MSG|{length}|".encode('utf-8')
-    sock.sendall(header + payload_bytes)
+    _send(sock, header + payload_bytes)
     
 def send_bye(sock):
-    sock.sendall(b"BYE|")
+    _send(sock, b"BYE|")
 
-def send_file_frame(sock, filename, file_bytes):
-    size = len(file_bytes)
-    header = f"FILE|{filename}|{size}|".encode('utf-8')
-    sock.sendall(header + file_bytes)
+def send_file_start(sock, tid, filename, size):
+    filename = filename.replace("|", "_")
+    _send(sock, f"FSTART|{tid}|{filename}|{size}|".encode('utf-8'))
+    
+def send_file_chunk(sock, tid, chunk: bytes):
+    _send(sock, f"DATA|{tid}|{len(chunk)}|".encode('utf-8') + chunk)
+    
+def send_file_end(sock, tid):
+    _send(sock, f"FEND|{tid}|".encode('utf-8'))
+
+def send_file_abort(sock, tid):
+    _send(sock, f"FABORT|{tid}|".encode('utf-8'))
     
 def close_connection(sock, say_bye=True):
     if say_bye:
@@ -60,15 +90,20 @@ def close_connection(sock, say_bye=True):
         sock.close()
     except OSError:
         pass
+    _drop_send_lock(sock)
+    
+def _field(sock):
+    raw = recv_until_delimeter(sock, b'|')
+    return None if raw is None else raw.decode('utf-8')
     
 def recv_frame(sock):
     frame_type_bytes = recv_until_delimeter(sock, b'|')
     if not frame_type_bytes:
         return None
     
-    fram_type = frame_type_bytes.decode('utf-8').strip()
+    frame_type = frame_type_bytes.decode('utf-8').strip()
     
-    if fram_type == "HI":
+    if frame_type == "HI":
         name_bytes = recv_until_delimeter(sock, b'|')
         port_bytes = recv_until_delimeter(sock, b'|')
         if not name_bytes or not port_bytes:
@@ -78,7 +113,7 @@ def recv_frame(sock):
             "tcp_port": int(port_bytes.decode('utf-8')),
         }
     
-    elif fram_type == "MSG":
+    elif frame_type == "MSG":
         length_bytes = recv_until_delimeter(sock, b'|')
         if not length_bytes:
             return None
@@ -87,32 +122,62 @@ def recv_frame(sock):
         if payload is None:
             return None
         return "MSG", {
-            "text": payload.decode('utf-8')
-        }
+            "text": payload.decode('utf-8')}
     
-    elif fram_type == "FILE":
-        filename_bytes = recv_until_delimeter(sock, b'|')
-        size_bytes = recv_until_delimeter(sock, b'|')
-        if not filename_bytes or not size_bytes:
+    if frame_type == "FSTART":
+        tid, name, size = _field(sock), _field(sock), _field(sock)
+        if None in (tid, name, size):
             return None
-        filename = filename_bytes.decode('utf-8')
-        size = int(size_bytes.decode('utf-8'))
-        
-        file_data = recv_exact(sock, size)
-        if file_data is None:
+        return "FSTART", {"tid": tid, "filename": name, "size": int(size)}
+
+    if frame_type == "FDATA":
+        tid, length = _field(sock), _field(sock)
+        if tid is None or length is None:
             return None
-        return "FILE", {
-            "filename": filename,
-            "size": size,
-            "data": file_data
-        }
-    elif fram_type == "BYE":
+        length = int(length)
+        if length < 0 or length > MAX_CHUNK_RECV:
+            raise ValueError(f"Invalid chunk length: {length}")
+        data = recv_exact(sock, length)
+        if data is None:
+            return None
+        return "FDATA", {"tid": tid, "data": data}
+
+    if frame_type in ("FEND", "FABORT"):
+        tid = _field(sock)
+        if tid is None:
+            return None
+        return frame_type, {"tid": tid}
+    
+    elif frame_type == "BYE":
         return "BYE", {}
     else:
-        raise ValueError(f"Unable to recognize frame type: {fram_type}!")
+        raise ValueError(f"Unable to recognize frame type: {frame_type}!")
+
+def _unique_path(filename):
+    safe = os.path.basename(filename or "") or "unnamed"
+    path = os.path.join(DOWNLOAD_DIR, safe)
+    base, ext = os.path.splitext(path)
+    n = 1
+    while os.path.exists(path):
+        path = f"{base} ({n}){ext}"
+        n += 1
+    return path
+
+def _discard(entry):
+    if entry.get("f"):
+        try:
+            entry["f"].close()
+        except OSError:
+            pass
+        try:
+            os.remove(entry["path"])
+        except OSError:
+            pass
+        entry["f"] = None
 
 def tcp_receiver_thread(sock, peer_name=None):
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    incoming = {}
     while True:
         try:
             result = recv_frame(sock)
@@ -133,20 +198,58 @@ def tcp_receiver_thread(sock, peer_name=None):
             elif frame_type == "MSG":
                 print(f"\r[{peer_name or '?'}]: {data['text']}")
                
-            elif frame_type == "FILE":
-                safe_name = os.path.basename(data['filename'] or "unnamed")
-                path  = os.path.join(DOWNLOAD_DIR, safe_name)
-                with open(path, "wb") as f:
-                    f.write(data['data'])
-                print(f"Received file from {peer_name or '?'}: {path} ({data['size']} bytes)")
+            elif frame_type == "FSTART":
+                save_path = _unique_path(data["filename"])
+                try:
+                    f_out = open(save_path, "wb")
+                    incoming[data["tid"]] = {
+                        "f": f_out,
+                        "path": save_path,
+                        "size": data["size"],
+                        "got": 0
+                    }
+                    print(f"\r[*] Receiving file '{data['filename']}' ({data['size']} bytes) from {peer_name or '?'}...")
+                except OSError as e:
+                    print(f"\r[!] Cannot save file: {e}")
+            
+            elif frame_type == "FDATA":
+                entry = incoming.get(data["tid"])
+                if entry is None or entry["f"] is None:
+                    continue            # file bị từ chối / đã huỷ: bỏ qua dữ liệu
+                entry["got"] += len(data["data"])
+                if entry["got"] > entry["size"]:
+                    print("[!] Received more data than declared, discarding file.")
+                    _discard(entry)
+                    continue
+                entry["f"].write(data["data"])
+
+            elif frame_type == "FEND":
+                entry = incoming.pop(data["tid"], None)
+                if entry and entry["f"]:
+                    entry["f"].close()
+                    if entry["got"] == entry["size"]:
+                        print(f"Received file from {peer_name or '?'}: {entry['path']} ({entry['size']} bytes)")
+                    else:
+                        entry["f"] = open(entry["path"], "rb")  # để _discard đóng + xoá
+                        print("[!] Incomplete file, discarded.")
+                        _discard(entry)
+
+            elif frame_type == "FABORT":
+                entry = incoming.pop(data["tid"], None)
+                if entry:
+                    _discard(entry)
+                    print(f"[!] {peer_name or '?'} cancelled a file transfer.")
                 
             elif frame_type == "BYE":
                 print("\nCounterpart have closed.")
-                
-                break;
+                break
         except Exception as e:
             print(f"\n Error: {e}")
             break
+    
+    for entry in incoming.values():
+        _discard(entry)
+    
     with conn_lock:
         if peer_name and connected_peers.get(peer_name) is sock:
             del connected_peers[peer_name]

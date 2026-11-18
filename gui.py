@@ -11,10 +11,10 @@ import p2p_radar
 from p2p_radar import (init_radar, online_peers, peer_lock,
                        broadcaster_thread, listener_thread, timeout_checker_thread,
                        broadcast_leave)
-from p2p_tcp import (connected_peers, conn_lock, send_hi, send_msg, send_bye,
-                     send_file_frame, tcp_receiver_thread, tcp_acceptor,
+from p2p_tcp import (connected_peers, conn_lock, send_hi, send_msg, send_bye, tcp_receiver_thread, tcp_acceptor,
                      close_connection)
-
+from file_sender import start_send_file
+SCAN_SECONDS = 3.5
 
 root_window = None
 login_frame = None
@@ -246,27 +246,29 @@ def handle_send_file():
         return
 
     filepath = filedialog.askopenfilename()
-    if not filepath: return
-
-    size = os.path.getsize(filepath)
-    if size > 50*1024*1024:
-        messagebox.showerror("Lỗi", "Chỉ hỗ trợ file tối đa 50MB!")
+    if not filepath:
         return
 
     with conn_lock:
         sock = connected_peers.get(current_chat_target)
-
-    if sock:
-        try:
-            with open(filepath, "rb") as f:
-                data = f.read()
-            filename = os.path.basename(filepath)
-            print(f"[*] Đang gửi file {filename} ({size} bytes)...")
-            send_file_frame(sock, filename, data)
-            print("[+] Đã gửi file thành công!")
-        except Exception as e:
-            print(f"[!] Lỗi khi gửi file: {e}")
-
+        
+    if not sock:
+        print(f"No connected with TCP with {current_chat_target}")
+        return
+    
+    def on_progress(tr, pct):
+        print(f"Sending {tr.filename}: {pct}%")
+        
+    def on_done(tr, ok, err):
+        if ok:
+            print(f"Send file {tr.filename} successful")
+        else:
+            print(f"Sent file failure: {err}")
+    try:
+        tr = start_send_file(sock, filepath, current_chat_target, on_progress, on_done)
+        print(f"Star send file {tr.filename} ({tr.size} bytes)")
+    except (ValueError, OSError) as e:
+        messagebox.showerror("Error", str(e))
 def handle_shutdown():
     sys.stdout = sys.__stdout__
     sys.stderr = sys.__stderr__
