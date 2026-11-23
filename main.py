@@ -14,7 +14,8 @@ from p2p_radar import (init_radar, init_status, online_peers, peer_lock,
                        broadcaster_thread, listener_thread, timeout_checker_thread,
                        broadcast_leave)
 from p2p_tcp import (connected_peers, conn_lock, send_hi, send_msg, send_bye,
-                     tcp_receiver_thread, tcp_acceptor, close_connection)
+                     tcp_receiver_thread, tcp_acceptor, close_connection, set_current_chat,
+                     get_current_chat,get_unseen_msg)
 from file_sender import start_send_file, cancel_all
 
 MAX_FILE_SIZE = 50*1024*1024 # 50MB
@@ -42,28 +43,45 @@ def cmd_chat(parts, my_name, my_port):
     if target == my_name:
         print("You cannot chat with yourself.")
         return
-    if  get_connection(target):
-        print(f"Already connectecd to {target}")
-        return
-    with peer_lock:
-        info = online_peers.get(target)
-    if not info:
-        print("Users is not online!")
+    if not get_connection(target):
+        with peer_lock:
+            info = online_peers.get(target)
+        if not info:
+            print("Users is not online!")
+            return
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(5)
+            sock.connect((info["ip"], info["port"]))
+            sock.settimeout(None)
+            send_hi(sock, my_name, my_port)
+        except OSError as e:
+            print(f"[!] Cannot connect to {target}: {e}")
+            return
+    
+        with conn_lock:
+            connected_peers[target] = sock
+        threading.Thread(target=tcp_receiver_thread, args=(sock, target), daemon=True).start()
+    set_current_chat(target)
+    print(f"[*] Chatting with {target}. Type directly to message, /back to leave chat, /bye to disconnect.")
+    unseen = get_unseen_msg(target)
+    for msg in unseen :
+        print(f"[{target}]: {msg}")
+
+def send_direct_msg(target,text):
+    sock = get_connection(target)
+    if not sock:
+        print(f"[!] Not connected to {target}. Use /chat {target} first.")
+        if get_current_chat() == target:
+            set_current_chat(None)
         return
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(5)
-        sock.connect((info["ip"], info["port"]))
-        sock.settimeout(None)
-        send_hi(sock, my_name, my_port)
+        send_msg(sock,text)
     except OSError as e:
-        print(f"[!] Cannot connect to {target}: {e}")
-        return
- 
-    with conn_lock:
-        connected_peers[target] = sock
-    threading.Thread(target=tcp_receiver_thread, args=(sock, target), daemon=True).start()
-    print(f"Connected to {target}. Use /msg {target} <text> or /file {target} <path>")
+        print(f"[!] Send failed: {e}")
+        drop_connection(target)
+        if get_current_chat() == target:
+            set_current_chat(None)
 
 def cmd_msg(command):
     parts = command.split(" ", 2)
@@ -110,10 +128,11 @@ def cmd_file(command):
         print(f"{e}")
 
 def cmd_bye(parts):
-    if len(parts) < 2:
-        print("[!] Usage: /bye <name>")
+    target = parts[1] if len(parts) >=2 else get_current_chat()
+    if not target:
+        print("[!] Usage: /bye [name]")
         return
-    target = parts[1]
+    
     sock = get_connection(target)
     if not sock:
         print(f"[!] Not connected to {target}.")
@@ -123,6 +142,8 @@ def cmd_bye(parts):
     except OSError:
         pass
     drop_connection(target)
+    if get_current_chat() == target:
+        set_current_chat(None)
     print(f"[*] Closed chat with {target}.")
  
  
@@ -183,13 +204,29 @@ async def main():
                     session = PromptSession()
                     while True:
                         try:
-                            command = await session.prompt_async("> ")
+                            active = get_current_chat()
+                            prompt_text = f"[Me]: " if active else "> "
+                            command = await session.prompt_async(prompt_text)
                             command = command.strip()
-                            parts = command.split()
+                            
                             if command == "":
                                 continue
-                            elif parts[0] == "/chat":
+                            if not command.startswith("/"):
+                                if active:
+                                    send_direct_msg(active,command)
+                                else:
+                                    print("[!] You haven't selected a chat partner. Use /chat [name] to start.")
+                                continue
+
+                            parts = command.split()
+                            if parts[0] == "/chat":
                                 cmd_chat(parts, my_name, my_port)
+                            elif parts[0] == "/back":
+                                if active:
+                                    set_current_chat(None)
+                                    print(f"[*] Left chat with {active} (still connected).")
+                                else:
+                                    print("[*] You are on the main screen.")
                             elif parts[0] == "/msg":
                                 cmd_msg(command)
                             elif parts[0] in ("/file", "/sendfile"):
