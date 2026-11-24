@@ -127,7 +127,8 @@ def cmd_file(command):
     except (ValueError, OSError) as e:
         print(f"{e}")
 
-def cmd_bye(parts):
+def cmd_bye(command):
+    parts = command.split()
     target = parts[1] if len(parts) >=2 else get_current_chat()
     if not target:
         print("[!] Usage: /bye [name]")
