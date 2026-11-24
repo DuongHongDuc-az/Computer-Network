@@ -15,6 +15,31 @@ MAX_CHUNK_RECV = 256 * 1024
 _send_locks = {}
 _send_locks_guard = threading.Lock()
 
+_unseen_msg = {}
+_unseen_lock = threading.Lock()
+
+_current_chat = None
+_chat_lock = threading.Lock()
+
+def set_current_chat(name):
+    global _current_chat
+    with _chat_lock:
+        _current_chat = name
+
+def get_current_chat():
+    with _chat_lock:
+        return _current_chat
+
+def add_unseen_msg(name,msg):
+    with _unseen_lock:
+        if name not in _unseen_msg:
+            _unseen_msg[name] = []
+        _unseen_msg[name].append(msg)
+
+def get_unseen_msg(name):
+    with _unseen_lock:
+        return _unseen_msg.pop(name,[])
+
 def _get_send_lock(sock):
     with _send_locks_guard:
         lock = _send_locks.get(sock)
@@ -196,8 +221,13 @@ def tcp_receiver_thread(sock, peer_name=None):
                 print(f"\r[+] {peer_name} connected (port {data['tcp_port']}).")
                 
             elif frame_type == "MSG":
-                print(f"\r[{peer_name or '?'}]: {data['text']}")
-               
+                sender = peer_name or '?'
+                if get_current_chat()==sender:
+                    print(f"\r[{sender}]: {data['text']}")
+                else:
+                    add_unseen_msg(sender,data['text'])
+                    print(f"[*] New message from {sender} (type /chat {sender} to view)")
+                               
             elif frame_type == "FSTART":
                 save_path = _unique_path(data["filename"])
                 try:
@@ -253,6 +283,9 @@ def tcp_receiver_thread(sock, peer_name=None):
     with conn_lock:
         if peer_name and connected_peers.get(peer_name) is sock:
             del connected_peers[peer_name]
+    if peer_name and get_current_chat() == peer_name:
+        set_current_chat(None)
+        print(f"[!] Left chat with {peer_name} due to disconnection.")
     try:
         sock.close()
     except OSError:
