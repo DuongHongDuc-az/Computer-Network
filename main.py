@@ -6,9 +6,10 @@ import threading
 import time
 import p2p_radar 
 import asyncio
+import uti
 
-from prompt_toolkit import PromptSession
-from prompt_toolkit.patch_stdout import patch_stdout
+
+from uti import patch_stdout , PromptSession , print_color , Fore, Style
 
 from p2p_radar import (init_radar, init_status, online_peers, peer_lock,
                        broadcaster_thread, listener_thread, timeout_checker_thread,
@@ -20,6 +21,16 @@ from file_sender import start_send_file, cancel_all
 
 MAX_FILE_SIZE = 50*1024*1024 # 50MB
 SCAN_SECONDS = 3.5
+
+C_ME     = Fore.LIGHTGREEN_EX
+C_PEER   = Fore.LIGHTCYAN_EX
+C_WAIT   = Style.BRIGHT + Fore.LIGHTMAGENTA_EX
+C_SYS    = Fore.YELLOW
+C_ERR    = Style.BRIGHT + Fore.RED
+C_TIME   = Fore.LIGHTBLACK_EX
+RESET    = Style.RESET_ALL
+
+
 
 def get_connection(name):
     with conn_lock:
@@ -36,18 +47,18 @@ def drop_connection(name):
 
 def cmd_chat(parts, my_name, my_port):
     if len(parts) < 2:
-        print("Usage: /chat <name>")
+        print_color(f"{C_SYS}Usage: /chat <name>")
         return
     target = parts[1]
     
     if target == my_name:
-        print("You cannot chat with yourself.")
+        print_color(f"{C_SYS}You cannot chat with yourself.")
         return
     if not get_connection(target):
         with peer_lock:
             info = online_peers.get(target)
         if not info:
-            print("Users is not online!")
+            print_color(f"{C_SYS}Users is not online!")
             return
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -56,29 +67,29 @@ def cmd_chat(parts, my_name, my_port):
             sock.settimeout(None)
             send_hi(sock, my_name, my_port)
         except OSError as e:
-            print(f"[!] Cannot connect to {target}: {e}")
+            print_color(f"{C_ERR}[!] Cannot connect to {target}: {e}")
             return
     
         with conn_lock:
             connected_peers[target] = sock
         threading.Thread(target=tcp_receiver_thread, args=(sock, target), daemon=True).start()
     set_current_chat(target)
-    print(f"[*] Chatting with {target}. Type directly to message, /back to leave chat, /bye to disconnect.")
+    print_color(f"{C_SYS}[*] Connected to {target}.")
     unseen = get_unseen_msg(target)
     for msg in unseen :
-        print(f"[{target}]: {msg}")
+        print_color(f"{C_PEER}[{target}] {RESET}{msg}")
 
 def send_direct_msg(target,text):
     sock = get_connection(target)
     if not sock:
-        print(f"[!] Not connected to {target}. Use /chat {target} first.")
+        print_color(f"{C_ERR}[!] Not connected to {target}. Use /chat {target} first.")
         if get_current_chat() == target:
             set_current_chat(None)
         return
     try:
         send_msg(sock,text)
     except OSError as e:
-        print(f"[!] Send failed: {e}")
+        print_color(f"{C_ERR}[!] Send failed: {e}")
         drop_connection(target)
         if get_current_chat() == target:
             set_current_chat(None)
@@ -86,57 +97,57 @@ def send_direct_msg(target,text):
 def cmd_msg(command):
     parts = command.split(" ", 2)
     if len(parts) < 3 or not parts[2].strip():
-        print("Usage: /msg <name> <text>")
+        print_color(f"{C_SYS}Usage: /msg <name> <text>")
         return
     _, target, text = parts
     
     sock = get_connection(target)
     
     if not sock:
-        print(f"[!] Not connected to {target}. Use /chat {target} first.")
+        print_color(f"{C_ERR}[!] Not connected to {target}. Use /chat {target} first.")
         return
     try:
         send_msg(sock, text)
     except OSError as e:
-        print(f"[!] Send failed: {e}")
+        print_color(f"{C_ERR}[!] Send failed: {e}")
         drop_connection(target)
 
 def cmd_file(command):
     parts = command.split(" ", 2)
     if len(parts) < 3:
-        print("[!] Usage: /file <name> <path>")
+        print_color(f"{C_SYS}[!] Usage: /file <name> <path>")
         return
     _, target, path = parts
     path = path.strip().strip('"')
  
     sock = get_connection(target)
     if not sock:
-        print(f"[!] Not connected to {target}. Use /chat {target} first.")
+        print_color(f"{C_ERR}[!] Not connected to {target}. Use /chat {target} first.")
         return
     def on_progress(tr, pct):
-        print(f"Sending {tr.filename} -> {target}: {pct}")
+        print_color(f"{C_SYS}Sending {tr.filename} -> {target}: {pct}")
         
     def on_done(tr, ok, err):
         if ok:
-            print(f"Send {tr.filename} ({tr.size} bytes) to {target}")
+            print_color(f"{C_SYS}Send {tr.filename} ({tr.size} bytes) to {target}")
         else:
-            print(f"Send {tr.filename} failed: {err}")
+            print_color(f"{C_SYS}Send {tr.filename} failed: {err}")
     try:
         tr = start_send_file(sock, path, target, on_progress, on_done)
-        print(f"Starting {tr.filename} ({tr.size} bytes) in background")
+        print_color(f"{C_SYS}Starting {tr.filename} ({tr.size} bytes) in background")
     except (ValueError, OSError) as e:
-        print(f"{e}")
+        print_color(f"{C_ERR}{e}")
 
 def cmd_bye(command):
     parts = command.split()
     target = parts[1] if len(parts) >=2 else get_current_chat()
     if not target:
-        print("[!] Usage: /bye [name]")
+        print_color(f"{C_SYS}[!] Usage: /bye [name]")
         return
     
     sock = get_connection(target)
     if not sock:
-        print(f"[!] Not connected to {target}.")
+        print_color(f"{C_ERR}[!] Not connected to {target}.")
         return
     try:
         send_bye(sock)
@@ -145,16 +156,16 @@ def cmd_bye(command):
     drop_connection(target)
     if get_current_chat() == target:
         set_current_chat(None)
-    print(f"[*] Closed chat with {target}.")
+    print_color(f"{C_SYS}[*] Closed chat with {target}.")
  
  
 def cmd_conns():
     with conn_lock:
         names = list(connected_peers.keys())
     if not names:
-        print("[*] No active chats.")
+        print_color(f"{C_SYS}[*] No active chats.")
     else:
-        print("Active chats: " + ", ".join(names))
+        print_color(f"{C_SYS}Active chats: " + ", ".join(names))
  
  
 def shutdown(server_sock=None):
@@ -181,7 +192,7 @@ async def main():
         while True:
             my_name = input("Enter your name: ").strip()
             if not my_name or "|" in my_name:
-                print("[!] Name cannot be empty or contain '|'. Please try again.")
+                print_color(f"{C_SYS}[!] Name cannot be empty or contain '|'. Please try again.")
                 continue
             break
             
@@ -203,20 +214,26 @@ async def main():
                     threading.Thread(target=timeout_checker_thread, daemon=True).start()
             
                     session = PromptSession()
+                    session.app.erase_when_done = True
                     while True:
                         try:
                             active = get_current_chat()
-                            prompt_text = f"[Me]: " if active else "> "
+                            prompt_text = "> "
                             command = await session.prompt_async(prompt_text)
                             command = command.strip()
-                            
+
                             if command == "":
                                 continue
+                            if active and command != "":
+                                print_color(f"{C_ME}[Me] {RESET}{command}")
+                            elif command != "":
+                                print(f"> {command}")
+
                             if not command.startswith("/"):
                                 if active:
                                     send_direct_msg(active,command)
                                 else:
-                                    print("[!] You haven't selected a chat partner. Use /chat [name] to start.")
+                                    print(f"{C_SYS}[!] You haven't selected a chat partner. Use /chat [name] to start.")
                                 continue
 
                             parts = command.split()
@@ -225,9 +242,9 @@ async def main():
                             elif parts[0] == "/back":
                                 if active:
                                     set_current_chat(None)
-                                    print(f"[*] Left chat with {active} (still connected).")
+                                    print_color(f"{C_SYS}[*] Left chat with {active} (still connected).")
                                 else:
-                                    print("[*] You are on the main screen.")
+                                    print_color(f"{C_SYS}[*] You are on the main screen.")
                             elif parts[0] == "/msg":
                                 cmd_msg(command)
                             elif parts[0] in ("/file", "/sendfile"):
@@ -239,7 +256,7 @@ async def main():
                             elif parts[0] == "/list":
                                 with peer_lock:
                                     if not online_peers:
-                                        print("[*] No peers found in the LAN yet.")
+                                        print_color(f"{C_SYS}[*] No peers found in the LAN yet.")
                                     else:
                                         print(f"------ ONLINE PEERS LIST ({len(online_peers)} peers) ------")
                                         for name, info in online_peers.items():
@@ -254,23 +271,23 @@ async def main():
                                     if new_status in ["online", "busy", "away"]:
                                         init_status(new_status)
                                                 
-                                        print(f"[*] Status changed to: {new_status}")
+                                        print_color(f"{C_SYS}[*] Status changed to: {new_status}")
                                     else:
-                                        print("[!] Error: Invalid status.")
-                                        print("[-] Allowed statuses are: online, busy, away")
+                                        print_color(f"{C_ERR}[!] Error: Invalid status.")
+                                        print_color(f"{C_SYS}[-] Allowed statuses are: online, busy, away")
                                 else:
-                                    print("[!] Invalid syntax. Usage: /status <status_name>")
+                                    print_color(f"{C_SYS}[!] Invalid syntax. Usage: /status <status_name>")
                                     
                             elif command == "/quit":
-                                print("[*] Disconnecting and exiting...")
+                                print_color(f"{C_SYS}[*] Disconnecting and exiting...")
                                 shutdown(server_sock)
                                 sys.exit(0)
                                 
                             else:
-                                print(f"[!] Invalid command: {command}")
+                                print_color(f"{C_SYS}[!] Invalid command: {command}")
                                 
                         except KeyboardInterrupt:
-                            print("\n[*] Shutting down system...")
+                            print_color(f"\n{C_SYS}[*] Shutting down system...")
                             shutdown()
                             sys.exit(0)
     

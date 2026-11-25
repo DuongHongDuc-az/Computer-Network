@@ -4,6 +4,8 @@ import time
 import os
 from typing import Tuple, Dict, Any, Optional
 import os
+import uti
+from uti import Fore,Style,print_color
 connected_peers = {}
 DOWNLOAD_DIR = "download"
 conn_lock = threading.Lock()
@@ -20,6 +22,14 @@ _unseen_lock = threading.Lock()
 
 _current_chat = None
 _chat_lock = threading.Lock()
+
+C_ME     = Fore.LIGHTGREEN_EX
+C_PEER   = Fore.LIGHTCYAN_EX
+C_WAIT   = Style.BRIGHT + Fore.LIGHTMAGENTA_EX
+C_SYS    = Fore.YELLOW
+C_ERR    = Style.BRIGHT + Fore.RED
+C_TIME   = Fore.LIGHTBLACK_EX
+RESET    = Style.RESET_ALL
 
 def set_current_chat(name):
     global _current_chat
@@ -93,7 +103,7 @@ def send_file_start(sock, tid, filename, size):
     _send(sock, f"FSTART|{tid}|{filename}|{size}|".encode('utf-8'))
     
 def send_file_chunk(sock, tid, chunk: bytes):
-    _send(sock, f"DATA|{tid}|{len(chunk)}|".encode('utf-8') + chunk)
+    _send(sock, f"FDATA|{tid}|{len(chunk)}|".encode('utf-8') + chunk)
     
 def send_file_end(sock, tid):
     _send(sock, f"FEND|{tid}|".encode('utf-8'))
@@ -207,26 +217,26 @@ def tcp_receiver_thread(sock, peer_name=None):
         try:
             result = recv_frame(sock)
             if result is None:
-                print("UNCONNECTED!")
+                print_color(f"{C_ERR}UNCONNECTED!")
                
                 break
             
             frame_type, data = result
             
             if frame_type == "HI":
-                print(f"\n Successful conected with {data['name']} (Port:{data['tcp_port']})")
+                print_color(f"\n {C_SYS}Successful conected with {data['name']} (Port:{data['tcp_port']})")
                 peer_name = data['name']
                 with conn_lock:
                     connected_peers[peer_name] = sock
-                print(f"\r[+] {peer_name} connected (port {data['tcp_port']}).")
+                print_color(f"\r{C_SYS}[+] {peer_name} connected (port {data['tcp_port']}).")
                 
             elif frame_type == "MSG":
                 sender = peer_name or '?'
                 if get_current_chat()==sender:
-                    print(f"\r[{sender}]: {data['text']}")
+                    print_color(f"\r{C_PEER}[{sender}] {RESET}{data['text']}")
                 else:
                     add_unseen_msg(sender,data['text'])
-                    print(f"[*] New message from {sender} (type /chat {sender} to view)")
+                    print_color(f"{C_WAIT}[*] New message from {sender} ({len(_unseen_msg[sender])} unread)")
                                
             elif frame_type == "FSTART":
                 save_path = _unique_path(data["filename"])
@@ -238,9 +248,9 @@ def tcp_receiver_thread(sock, peer_name=None):
                         "size": data["size"],
                         "got": 0
                     }
-                    print(f"\r[*] Receiving file '{data['filename']}' ({data['size']} bytes) from {peer_name or '?'}...")
+                    print_color(f"\r{C_SYS}[*] Receiving file '{data['filename']}' ({data['size']} bytes) from {peer_name or '?'}...")
                 except OSError as e:
-                    print(f"\r[!] Cannot save file: {e}")
+                    print_color(f"\r{C_ERR}[!] Cannot save file: {e}")
             
             elif frame_type == "FDATA":
                 entry = incoming.get(data["tid"])
@@ -248,7 +258,7 @@ def tcp_receiver_thread(sock, peer_name=None):
                     continue            # file bị từ chối / đã huỷ: bỏ qua dữ liệu
                 entry["got"] += len(data["data"])
                 if entry["got"] > entry["size"]:
-                    print("[!] Received more data than declared, discarding file.")
+                    print_color(f"{C_ERR}[!] Received more data than declared, discarding file.")
                     _discard(entry)
                     continue
                 entry["f"].write(data["data"])
@@ -258,23 +268,23 @@ def tcp_receiver_thread(sock, peer_name=None):
                 if entry and entry["f"]:
                     entry["f"].close()
                     if entry["got"] == entry["size"]:
-                        print(f"Received file from {peer_name or '?'}: {entry['path']} ({entry['size']} bytes)")
+                        print_color(f"{C_SYS}Received file from {peer_name or '?'}: {entry['path']} ({entry['size']} bytes)")
                     else:
                         entry["f"] = open(entry["path"], "rb")  # để _discard đóng + xoá
-                        print("[!] Incomplete file, discarded.")
+                        print_color(f"{C_SYS}[!] Incomplete file, discarded.")
                         _discard(entry)
 
             elif frame_type == "FABORT":
                 entry = incoming.pop(data["tid"], None)
                 if entry:
                     _discard(entry)
-                    print(f"[!] {peer_name or '?'} cancelled a file transfer.")
+                    print_color(f"{C_SYS}[!] {peer_name or '?'} cancelled a file transfer.")
                 
             elif frame_type == "BYE":
-                print("\nCounterpart have closed.")
+                print_color(f"\n{C_SYS}Counterpart have closed.")
                 break
         except Exception as e:
-            print(f"\n Error: {e}")
+            print_color(f"\n {C_ERR}Error: {e}")
             break
     
     for entry in incoming.values():
@@ -285,7 +295,7 @@ def tcp_receiver_thread(sock, peer_name=None):
             del connected_peers[peer_name]
     if peer_name and get_current_chat() == peer_name:
         set_current_chat(None)
-        print(f"[!] Left chat with {peer_name} due to disconnection.")
+        print_color(f"{C_SYS}[!] Left chat with {peer_name} due to disconnection.")
     try:
         sock.close()
     except OSError:
@@ -297,5 +307,5 @@ def tcp_acceptor(server_socket):
            conn, addr = server_socket.accept()
            threading.Thread(target=tcp_receiver_thread, args=(conn, ), daemon=True).start()
         except Exception as e:
-            print(f"\nError Acceptor Threading or Server closed: {e}")
+            print_color(f"\n{C_ERR}Error Acceptor Threading or Server closed: {e}")
             break

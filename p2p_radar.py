@@ -3,13 +3,21 @@ import threading
 import time
 import sys
 import random
-
+from uti import patch_stdout , PromptSession , print_color , Fore, Style
 my_name = ""   
 my_port = 0      
 my_status = "online"
 
 online_peers = {}             
 peer_lock = threading.Lock() 
+
+C_ME     = Fore.LIGHTGREEN_EX
+C_PEER   = Fore.LIGHTCYAN_EX
+C_WAIT   = Style.BRIGHT + Fore.LIGHTMAGENTA_EX
+C_SYS    = Fore.YELLOW
+C_ERR    = Style.BRIGHT + Fore.RED
+C_TIME   = Fore.LIGHTBLACK_EX
+RESET    = Style.RESET_ALL
 
 def init_status(status):
     global my_status
@@ -82,7 +90,7 @@ def listener_thread():
                     
                 with peer_lock:
                     if peer_name not in online_peers:
-                        print(f"\r[*] Radar detected new peer: {peer_name} ({addr[0]}:{peer_port})")
+                        print_color(f"\r{C_SYS}[*] Radar detected new peer: {peer_name} ({addr[0]}:{peer_port})")
                        
                         
                     online_peers[peer_name] = {
@@ -97,7 +105,7 @@ def listener_thread():
                 with peer_lock:
                     if peer_name in online_peers:
                         del online_peers[peer_name]
-                        print(f"\r[!] {peer_name} has left the network.")
+                        print_color(f"\r{C_SYS}[!] {peer_name} has left the network.")
         except Exception:
             pass
 
@@ -118,4 +126,4 @@ def timeout_checker_thread():
             
             for dead_peer in blacklist:
                 del online_peers[dead_peer]
-                print(f"\r[!] {dead_peer} disconnected (Timeout).")
+                print_color(f"\r{C_SYS}[!] {dead_peer} disconnected (Timeout).")
