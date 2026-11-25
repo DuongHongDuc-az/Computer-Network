@@ -186,7 +186,7 @@ def shutdown(server_sock=None):
 async def main():
         
         print("="*50)
-        print("            P2P RADAR SYSTEM - PHASE 1")
+        print("         P2P CHAT & FILE TRANSFER SYSTEM")
         print("="*50)
         
         while True:
