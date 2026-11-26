@@ -128,7 +128,7 @@ def cmd_file(command):
         print_color(f"{C_ERR}[!] Not connected to {target}. Use /chat {target} first.")
         return
     def on_progress(tr, pct):
-        print_color(f"{C_SYS}Sending {tr.filename} -> {target}: {pct}")
+        print_color(f"{C_SYS}Sending {tr.filename} -> {target}: {pct}%")
         
     def on_done(tr, ok, err):
         if ok:
