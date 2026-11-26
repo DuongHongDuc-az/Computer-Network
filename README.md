@@ -21,8 +21,8 @@ Khác với các ứng dụng chat Client–Server truyền thống, hệ thốn
 
 * 📡 **UDP Radar tự động khám phá nút mạng (Port `9999`):** Phát quảng bá (`255.255.255.255`) gói tin `HI|<name>|<port>|<status>` mỗi **3 giây** và tự động dọn dẹp các nút "bốc hơi" (rớt mạng, tắt nóng) sau **10 giây** im lặng. Khi thoát chủ động (`/quit`), hệ thống bắn liên tiếp 2 gói `LEAVE` cách nhau `0.05s` để giảm thiểu rủi ro thất lạc gói tin UDP.
 * 📦 **Phân khung dữ liệu chống dính gói TCP (Custom Framing):** Giải quyết triệt để bài toán *TCP Byte-Stream* bằng cơ chế đóng gói độ dài thực tế (`MSG|<byte_len>|<utf8_payload>`) kết hợp hàm đọc chính xác `recv_exact()`, hỗ trợ mượt mà tiếng Việt có dấu (multi-byte UTF-8).
-* 🚀 **Ghép kênh truyền tệp tin đa luồng (`64 KB` Chunking):** Truyền tệp song song ngay trên kết nối TCP hiện có qua bộ khung `FSTART` → `FCHUNK` → `FEND` / `FABORT`. Giới hạn tối đa **4 luồng gửi đồng thời** (`BoundedSemaphore(4)`), bảo vệ luồng ghi socket bằng khóa riêng từng kết nối (`_send_locks`) giúp **nhắn tin hai chiều hoàn toàn không bị nghẽn** ngay cả khi đang gửi tệp nặng `50 MB`.
-* 🛡️ **Bảo toàn dữ liệu với tệp tạm `.part`:** Dữ liệu nhận được ghi trực tiếp vào `downloads/<file>.part` và chỉ đổi tên sang tệp gốc khi khớp đủ `100%` số byte khai báo. Tự động xóa tệp lỗi nếu đứt kết nối giữa chừng hoặc nhận tín hiệu `FABORT`.
+* 🚀 **Ghép kênh truyền tệp tin đa luồng (`64 KB` Chunking):** Truyền tệp song song ngay trên kết nối TCP hiện có qua bộ khung `FSTART` → `FDATA` → `FEND` / `FABORT`. Giới hạn tối đa **4 luồng gửi đồng thời** (`BoundedSemaphore(4)`), bảo vệ luồng ghi socket bằng khóa riêng từng kết nối (`_send_locks`) giúp **nhắn tin hai chiều hoàn toàn không bị nghẽn** ngay cả khi đang gửi tệp nặng `50 MB`.
+* 🛡️ **Bảo toàn dữ liệu và chống ghi đè:** Dữ liệu nhận được ghi trực tiếp vào `download/<file>` và chỉ đổi tên sang tệp gốc khi khớp đủ `100%` số byte khai báo. Tự động xóa tệp lỗi nếu đứt kết nối giữa chừng hoặc nhận tín hiệu `FABORT`.
 * ⌨️ **Giao diện CLI bất đồng bộ không vỡ dòng:** Tích hợp `prompt_toolkit` (`patch_stdout()`) giúp tin nhắn mới từ đồng đội hiển thị gọn gàng phía trên mà không cắt ngang hay làm mất nội dung bạn đang gõ dở.
 
 ---
@@ -30,19 +30,19 @@ Khác với các ứng dụng chat Client–Server truyền thống, hệ thốn
 ## 🏗️ Kiến trúc hệ thống & Giao thức
 
 ```text
-+-----------------------------------------------------------------------------------+
-|                                MỘT NÚT MẠNG (PEER)                                |
-|                                                                                   |
-|  [Main CLI Thread]  <--->  prompt_toolkit (patch_stdout)  <--->  Màn hình Console |
-|         |                                                                         |
-|         +---> [UDP Broadcaster]  ---(Mỗi 3s: HI|Name|Port|Status)---> 255.255.255.255:9999
-|         +---> [UDP Listener]     <--(Nhận HI / LEAVE từ LAN)--------- 0.0.0.0:9999
-|         +---> [Timeout Checker]  ---(Quét mỗi 3s: Xóa peer > 10s)---> online_peers
-|         |                                                                         |
-|         +---> [TCP Acceptor]     <--(Lắng nghe kết nối mới)---------- 0.0.0.0:<Random_Port>
-|         +---> [TCP Receiver x N] <--(recv_exact: MSG, FSTART, FCHUNK, FEND, BYE)  |
-|         +---> [File Sender x 4]  ---(BoundedSemaphore(4) + _send_locks)---------> |
-+-----------------------------------------------------------------------------------+
++----------------------------------------------------------------------------------------------+
+|                                MỘT NÚT MẠNG (PEER)                                           |
+|                                                                                              |
+|  [Main CLI Thread]  <--->  prompt_toolkit (patch_stdout)  <--->  Màn hình Console            |
+|         |                                                                                    |
+|         +---> [UDP Broadcaster]  ---(Mỗi 3s: HI|Name|Port|Status)---> 255.255.255.255:9999   |
+|         +---> [UDP Listener]     <--(Nhận HI / LEAVE từ LAN)--------- 0.0.0.0:9999           |
+|         +---> [Timeout Checker]  ---(Quét mỗi 3s: Xóa peer > 10s)---> online_peers           |
+|         |                                                                                    |
+|         +---> [TCP Acceptor]     <--(Lắng nghe kết nối mới)---------- 0.0.0.0:<Random_Port>  |
+|         +---> [TCP Receiver x N] <--(recv_exact: MSG, FSTART, FDATA, FEND, BYE)              |
+|         +---> [File Sender x 4]  ---(BoundedSemaphore(4) + _send_locks)--------->            |
++----------------------------------------------------------------------------------------------+
 ```
 
 ---
@@ -73,8 +73,8 @@ python -m venv .venv
 # - Trên Linux / macOS:
 source .venv/bin/activate
 
-# Cài đặt thư viện giao diện CLI bất đồng bộ
-pip install prompt_toolkit
+# Cài đặt thư viện giao diện CLI bất đồng bộ và màu sắc
+pip install prompt_toolkit colorama
 ```
 *(Nếu đã có file `requirements.txt`, bạn chỉ cần chạy `pip install -r requirements.txt`)*
 
@@ -131,10 +131,11 @@ Nhờ cơ chế `SO_REUSEADDR` trên cổng UDP `9999` và cấp phát cổng TC
 | `/chat <tên>` | `/chat Nguyen` | Mở kết nối TCP và bước vào phòng chat trực tiếp với `<tên>`. |
 | `<văn bản>` | `Chào Nguyên, gửi file nhé!` | Gửi tin nhắn trực tiếp tới người đang mở khung chat hiện tại. |
 | `/msg <tên> <nội dung>` | `/msg Huy Tí họp nhóm nha` | Gửi nhanh tin nhắn cho `<tên>` mà không cần chuyển khung chat hiện tại. |
-| `/send <đường_dẫn>` *(hoặc `/file`)* | `/send ./bao_cao.pdf` | Gửi tệp tin tới đối tác (tối đa `50 MB`, chạy ngầm tối đa 4 tệp cùng lúc). |
+| `/file <tên> <đường_dẫn>` *(hoặc `/sendfile`)* | `/file Nguyen ./bao_cao.pdf` | Gửi tệp tin tới đối tác (tối đa `50 MB`, chạy ngầm tối đa 4 tệp cùng lúc). |
 | `/status <trạng_thái>` | `/status away` | Đổi trạng thái cá nhân (`online`, `away`, `busy`) cập nhật tức thì qua UDP. |
 | `/back` | `/back` | Thoát khỏi khung chat hiện tại về sảnh chính (vẫn giữ kết nối TCP ngầm). |
-| `/leave` *(hoặc `/bye`)* | `/leave` | Gửi gói `BYE` và ngắt hẳn kết nối TCP với đối tác hiện tại. |
+| `/bye` | `/bye` | Gửi gói `BYE` và ngắt hẳn kết nối TCP với đối tác hiện tại (có thể kèm `<tên>` nếu ngắt từ sảnh chính). |
+| `/conns` | `/conns` | Xem danh sách các đối tác đang duy trì kết nối TCP. |
 | `/help` | `/help` | Hiển thị bảng hướng dẫn nhanh các lệnh ngay trong Console. |
 | `/quit` | `/quit` | Hủy các tệp đang gửi, gửi `BYE` tới tất cả, phát gói `LEAVE` và thoát an toàn. |
 
@@ -157,7 +158,7 @@ Nhập tên của bạn: Duc
 [Duc -> Nguyen] Hi Nguyên, mình gửi bản nháp báo cáo nhé!
 [Nguyen] Ok gửi qua đi, mình đang check đây
 [*] Tin nhắn mới từ Huy (1 tin chưa đọc - gõ /chat Huy để xem)
-[Duc -> Nguyen] /send report_v1.pdf
+[Duc -> Nguyen] /file Nguyen report_v1.pdf
 [*] Đang gửi tệp 'report_v1.pdf' (12.4 MB) [TID: a9f31c02]...
 [Duc -> Nguyen] File hơi nặng chút, đợi tầm 2 giây nha!
 [*] Tiến độ gửi 'report_v1.pdf': 25%... 50%... 75%... 100% (Hoàn tất!)
@@ -202,19 +203,19 @@ Nhập tên của bạn: Duc
   * Dòng đang gõ dở trên màn hình của `Nguyen` **được giữ nguyên vẹn từng ký tự**, con trỏ vẫn nằm đúng cuối câu để gõ tiếp.
 
 ### Test 4: Truyền tệp tin lớn song song với Chat & Kiểm tra toàn vẹn SHA-256
-* **Mục đích:** Kiểm tra ghép kênh `FSTART`/`FCHUNK`/`FEND`, khóa `_send_locks` và tính toàn vẹn dữ liệu nhị phân.
+* **Mục đích:** Kiểm tra ghép kênh `FSTART`/`FDATA`/`FEND`, khóa `_send_locks` và tính toàn vẹn dữ liệu nhị phân.
 * **Thao tác:**
   1. Tạo nhanh một tệp nhị phân ngẫu nhiên dung lượng **30 MB** để test:
      * *Trên Windows (PowerShell):* `fsutil file createnew test_30mb.bin 31457280`
      * *Trên Linux/macOS:* `dd if=/dev/urandom of=test_30mb.bin bs=1M count=30`
-  2. Gửi tệp bằng lệnh `/send test_30mb.bin`. Trong lúc tiến độ đang chạy (`25%... 50%... 75%`), **liên tục nhắn tin qua lại** giữa hai máy.
+  2. Gửi tệp bằng lệnh `/file Nguyen test_30mb.bin`. Trong lúc tiến độ đang chạy (`25%... 50%... 75%`), **liên tục nhắn tin qua lại** giữa hai máy.
   3. Gửi tiếp cùng tệp đó thêm 1 lần nữa để kiểm tra cơ chế chống ghi đè `_unique_path()`.
-  4. Đối chiếu mã băm SHA-256 giữa tệp gốc và tệp trong thư mục `downloads/`:
-     * *Windows:* `certutil -hashfile test_30mb.bin SHA256` và `certutil -hashfile downloads\test_30mb.bin SHA256`
-     * *Linux/macOS:* `sha256sum test_30mb.bin downloads/test_30mb.bin`
+  4. Đối chiếu mã băm SHA-256 giữa tệp gốc và tệp trong thư mục `download/`:
+     * *Windows:* `certutil -hashfile test_30mb.bin SHA256` và `certutil -hashfile download\test_30mb.bin SHA256`
+     * *Linux/macOS:* `sha256sum test_30mb.bin download/test_30mb.bin`
 * **Kết quả kỳ vọng:**
   * Tin nhắn vẫn gửi/nhận tức thì trong lúc truyền tệp, không bị kẹt hay dính ký tự nhị phân vào tin nhắn.
-  * Lần gửi thứ 2 tự động lưu thành `test_30mb (1).bin` trong `downloads/`.
+  * Lần gửi thứ 2 tự động lưu thành `test_30mb (1).bin` trong `download/`.
   * Hai chuỗi mã băm **SHA-256 trùng khớp 100%**.
 
 ### Test 5: Xử lý sự cố & Dọn dẹp tệp dở dang (`Fault Tolerance`)
@@ -222,9 +223,9 @@ Nhập tên của bạn: Duc
 * **Thao tác:**
   1. Thử gửi một tệp có dung lượng **> 50 MB** (ví dụ `60 MB`) → Hệ thống từ chối và báo lỗi rõ ràng, không làm sập chương trình.
   2. Bắt đầu gửi tệp `30 MB`, khi tiến độ đạt khoảng `25%–50%`, nhấn **`Ctrl + C`** (hoặc gõ `/quit`) trên máy gửi.
-  3. Kiểm tra thư mục `downloads/` trên máy nhận.
+  3. Kiểm tra thư mục `download/` trên máy nhận.
 * **Kết quả kỳ vọng:**
-  * Máy nhận phát hiện ngắt luồng/nhận khung `FABORT`, thông báo hủy truyền tệp và **tự động xóa sạch tệp `.part` đang tải dở**, không để lại rác trong thư mục `downloads/`.
+  * Máy nhận phát hiện ngắt luồng/nhận khung `FABORT`, thông báo hủy truyền tệp và **tự động xóa sạch tệp đang tải dở**, không để lại rác trong thư mục `download/`.
 
 ### Test 6: Bắt gói tin kiểm chứng trên Wireshark
 * **Mục đích:** Xác minh hoạt động thực tế ở tầng Transport (UDP & TCP).
@@ -249,5 +250,5 @@ Nhập tên của bạn: Duc
 | STT | Họ và Tên | MSSV | Vai trò & Phân công chính |
 | :-: | :--- | :---: | :--- |
 | 1 | **Huỳnh Hoàng Nguyên** | `25120213` | Thiết kế & xây dựng phân hệ dò tìm ngang hàng **UDP Radar** (`broadcaster`, `listener`, `timeout_checker`). |
-| 2 | **Dương Hồng Đức** | `25120177` | Thiết kế giao thức phân khung **TCP**, truyền tệp tin bất đồng bộ đa luồng (`64 KB` chunking, `.part` safety). |
+| 2 | **Dương Hồng Đức** | `25120177` | Thiết kế giao thức phân khung **TCP**, truyền tệp tin bất đồng bộ đa luồng (`64 KB` chunking, _discard() cleanup). |
 | 3 | **Nguyễn Gia Huy** | `25120192` | Xây dựng giao diện **CLI bất đồng bộ** (`prompt_toolkit`), bộ điều phối phiên chat & kiểm thử tích hợp đa máy. |
