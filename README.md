@@ -120,7 +120,7 @@ Nhờ cơ chế `SO_REUSEADDR` trên cổng UDP `9999` và cấp phát cổng TC
    ```bash
    python main.py
    ```
-3. Nhập tên định danh cho từng máy (lưu ý: tên không được rỗng và **không chứa ký tự `|`**).
+3. Nhập tên định danh cho từng máy (lưu ý: tên không được rỗng, **không chứa khoảng trắng**, **không chứa ký tự `|`** và không trùng với người dùng đang trực tuyến).
 4. Chờ tối đa **3 giây**, gõ `/list` trên bất kỳ máy nào để thấy máy còn lại tự động xuất hiện cùng địa chỉ IP nội bộ.
 
 ### Bảng tra cứu lệnh điều khiển (CLI Commands)
@@ -239,6 +239,8 @@ Nhập tên của bạn: Duc
 
 | Hiện tượng | Nguyên nhân | Cách khắc phục |
 | :--- | :--- | :--- |
+| Nhập tên báo lỗi không hợp lệ | Tên rỗng, chứa khoảng trắng hoặc ký tự dấu gạch đứng `\|` | Khoảng trắng dùng để tách tham số các lệnh CLI và `\|` là dấu phân tách khung giao thức, hãy chọn tên viết liền không chứa các ký tự này. |
+| Nhập tên báo `Name '...' is already taken` | Trong mạng LAN đang có người dùng khác sử dụng tên này | Chọn một tên hiển thị khác không trùng với danh sách vừa đồng bộ lúc khởi động. |
 | Hai máy cùng Wi-Fi nhưng `/list` không thấy nhau | Windows Firewall chặn gói UDP đến, hoặc Wi-Fi bật *AP Isolation* | Cho phép `python.exe` qua Firewall (mục Private & Public) hoặc dùng điểm phát sóng di động (Mobile Hotspot) làm mạng LAN chung. |
 | Lỗi `ModuleNotFoundError` (`prompt_toolkit` hoặc `colorama`) | Chưa cài đủ thư viện phụ thuộc hoặc chưa kích hoạt đúng môi trường ảo `.venv` | Kích hoạt `.venv` và chạy lại `pip install prompt_toolkit colorama` trong đúng cửa sổ Terminal đang dùng. |
 | Nhập tên báo lỗi không hợp lệ | Tên chứa ký tự dấu gạch đứng `\|` hoặc chỉ toàn khoảng trắng | Ký tự `\|` được dùng làm dấu phân tách khung giao thức tầng ứng dụng, hãy chọn tên khác không chứa ký tự này. |
