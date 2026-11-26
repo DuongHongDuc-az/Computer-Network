@@ -214,21 +214,6 @@ async def main():
     
     init_radar(my_name, my_port) 
 
-<<<<<<< HEAD
-                            if command == "":
-                                continue
-                            if active and command != "":
-                                print_color(f"{C_ME}[Me] {RESET}{command}")
-                            elif command != "":
-                                print_color(f"> {command}")
-
-                            if not command.startswith("/"):
-                                if active:
-                                    send_direct_msg(active,command)
-                                else:
-                                    print_color(f"{C_SYS}[!] You haven't selected a chat partner. Use /chat [name] to start.")
-                                continue
-=======
     print(f"\n[*] Starting Radar for [{my_name}]...")
     print("Supported commands: /chat <name>, /back, /list, /msg <name> <text>, /status <status_name>")
     print("                    /file <name> <path>, /bye <name>, /conns, /quit")
@@ -245,7 +230,6 @@ async def main():
                 prompt_text = "> "
                 command = await session.prompt_async(prompt_text)
                 command = command.strip()
->>>>>>> b939236bf659096532f44bd021b3ced110c83863
 
                 if command == "":
                     continue            
@@ -294,30 +278,6 @@ async def main():
                         if new_status in ["online", "busy", "away"]:
                             init_status(new_status)
                                     
-<<<<<<< HEAD
-                                    if new_status in ["online", "busy", "away"]:
-                                        init_status(new_status)
-                                                
-                                        print_color(f"{C_SYS}[*] Status changed to: {new_status}")
-                                    else:
-                                        print_color(f"{C_ERR}[!] Error: Invalid status.")
-                                        print_color(f"{C_SYS}[-] Allowed statuses are: online, busy, away")
-                                else:
-                                    print_color(f"{C_SYS}[!] Invalid syntax. Usage: /status <status_name>")
-                                    
-                            elif command == "/quit":
-                                print_color(f"{C_SYS}[*] Disconnecting and exiting...")
-                                shutdown(server_sock)
-                                sys.exit(0)
-                                
-                            else:
-                                print_color(f"{C_SYS}[!] Invalid command: {command}")
-                                
-                        except KeyboardInterrupt:
-                            print_color(f"\n{C_SYS}[*] Shutting down system...")
-                            shutdown(server_sock)
-                            sys.exit(0)
-=======
                             print_color(f"{C_SYS}[*] Status changed to: {new_status}")
                         else:
                             print_color(f"{C_ERR}[!] Error: Invalid status.")
@@ -340,7 +300,6 @@ async def main():
                 print_color(f"\n{C_SYS}[*] Shutting down system...")
                 shutdown(server_sock)
                 break
->>>>>>> b939236bf659096532f44bd021b3ced110c83863
     
 
 if __name__ == "__main__":

@@ -307,7 +307,7 @@ def tcp_receiver_thread(sock, peer_name=None):
                     print_color(f"\n{C_ERR}[!] Connection error: {e}")
             break
         except Exception as e:
-            print_color(f"\n {C_ERR}Error: {e}")
+            # print_color(f"\n {C_ERR}Error: {e}")
             break
     
     for entry in incoming.values():
