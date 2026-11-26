@@ -118,7 +118,8 @@ def close_connection(sock, say_bye=True):
         except OSError:
             pass
     try:
-        sock.shutdown(socket.SHUT_RDWR)
+        sock.shutdown(socket.SHUT_WR)
+        time.sleep(0.05)
     except OSError:
         pass
     try:

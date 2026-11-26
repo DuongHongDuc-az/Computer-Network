@@ -1,4 +1,3 @@
-
 import os
 import socket
 import sys
@@ -41,6 +40,8 @@ def drop_connection(name):
         sock = connected_peers.pop(name, None)
     if sock:
         try:
+            sock.shutdown(socket.SHUT_WR)
+            time.sleep(0.05)
             sock.close()
         except OSError:
             pass
