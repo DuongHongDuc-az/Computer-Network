@@ -58,6 +58,7 @@ def add_unseen_msg(name,msg):
         if name not in _unseen_msg:
             _unseen_msg[name] = []
         _unseen_msg[name].append(msg)
+        return len(_unseen_msg[name])
 
 def get_unseen_msg(name):
     with _unseen_lock:
@@ -247,11 +248,11 @@ def tcp_receiver_thread(sock, peer_name=None):
                 
             elif frame_type == "MSG":
                 sender = peer_name or '?'
-                if get_current_chat()==sender:
+                if get_current_chat() == sender:
                     print_color(f"\r{C_PEER}[{sender}] {RESET}{data['text']}")
                 else:
-                    add_unseen_msg(sender,data['text'])
-                    print_color(f"{C_WAIT}[*] New message from {sender} ({len(_unseen_msg[sender])} unread)")
+                    unread_count = add_unseen_msg(sender, data['text'])
+                    print_color(f"{C_WAIT}[*] New message from {sender} ({unread_count} unread)")
                                
             elif frame_type == "FSTART":
                 save_path = _unique_path(data["filename"])
