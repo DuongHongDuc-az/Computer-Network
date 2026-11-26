@@ -22,7 +22,7 @@ Khác với các ứng dụng chat Client–Server truyền thống, hệ thốn
 * 📡 **UDP Radar tự động khám phá nút mạng (Port `9999`):** Phát quảng bá (`255.255.255.255`) gói tin `HI|<name>|<port>|<status>` mỗi **3 giây** và tự động dọn dẹp các nút "bốc hơi" (rớt mạng, tắt nóng) sau **10 giây** im lặng. Khi thoát chủ động (`/quit`), hệ thống bắn liên tiếp 2 gói `LEAVE` cách nhau `0.05s` để giảm thiểu rủi ro thất lạc gói tin UDP.
 * 📦 **Phân khung dữ liệu chống dính gói TCP (Custom Framing):** Giải quyết triệt để bài toán *TCP Byte-Stream* bằng cơ chế đóng gói độ dài thực tế (`MSG|<byte_len>|<utf8_payload>`) kết hợp hàm đọc chính xác `recv_exact()`, hỗ trợ mượt mà tiếng Việt có dấu (multi-byte UTF-8).
 * 🚀 **Ghép kênh truyền tệp tin đa luồng (`64 KB` Chunking):** Truyền tệp song song ngay trên kết nối TCP hiện có qua bộ khung `FSTART` → `FDATA` → `FEND` / `FABORT`. Giới hạn tối đa **4 luồng gửi đồng thời** (`BoundedSemaphore(4)`), bảo vệ luồng ghi socket bằng khóa riêng từng kết nối (`_send_locks`) giúp **nhắn tin hai chiều hoàn toàn không bị nghẽn** ngay cả khi đang gửi tệp nặng `50 MB`.
-* 🛡️ **Bảo toàn dữ liệu và chống ghi đè:** Dữ liệu nhận được ghi trực tiếp vào `download/<file>` và chỉ đổi tên sang tệp gốc khi khớp đủ `100%` số byte khai báo. Tự động xóa tệp lỗi nếu đứt kết nối giữa chừng hoặc nhận tín hiệu `FABORT`.
+* 🛡️ **Bảo toàn dữ liệu và chống ghi đè:** Dữ liệu nhận được ghi trực tiếp vào `download/<file>` (tự động đánh số thứ tự qua `_unique_path()` nếu trùng tên). Hệ thống đối chiếu chặt chẽ số byte thực nhận và tự động xóa sạch tệp lỗi thông qua hàm `_discard()` nếu đứt kết nối giữa chừng, sai lệch kích thước hoặc nhận tín hiệu `FABORT`.
 * ⌨️ **Giao diện CLI bất đồng bộ không vỡ dòng:** Tích hợp `prompt_toolkit` (`patch_stdout()`) giúp tin nhắn mới từ đồng đội hiển thị gọn gàng phía trên mà không cắt ngang hay làm mất nội dung bạn đang gõ dở.
 
 ---
@@ -31,7 +31,7 @@ Khác với các ứng dụng chat Client–Server truyền thống, hệ thốn
 
 ```text
 +----------------------------------------------------------------------------------------------+
-|                                MỘT NÚT MẠNG (PEER)                                           |
+|                                    MỘT NÚT MẠNG (PEER)                                       |
 |                                                                                              |
 |  [Main CLI Thread]  <--->  prompt_toolkit (patch_stdout)  <--->  Màn hình Console            |
 |         |                                                                                    |
@@ -219,7 +219,7 @@ Nhập tên của bạn: Duc
   * Hai chuỗi mã băm **SHA-256 trùng khớp 100%**.
 
 ### Test 5: Xử lý sự cố & Dọn dẹp tệp dở dang (`Fault Tolerance`)
-* **Mục đích:** Kiểm tra `FABORT`, cơ chế tự xóa tệp `.part` và giới hạn an toàn (`50 MB`).
+* **Mục đích:** Kiểm tra `FABORT`, cơ chế tự xóa tệp lỗi và giới hạn an toàn (`50 MB`).
 * **Thao tác:**
   1. Thử gửi một tệp có dung lượng **> 50 MB** (ví dụ `60 MB`) → Hệ thống từ chối và báo lỗi rõ ràng, không làm sập chương trình.
   2. Bắt đầu gửi tệp `30 MB`, khi tiến độ đạt khoảng `25%–50%`, nhấn **`Ctrl + C`** (hoặc gõ `/quit`) trên máy gửi.
@@ -240,8 +240,9 @@ Nhập tên của bạn: Duc
 | Hiện tượng | Nguyên nhân | Cách khắc phục |
 | :--- | :--- | :--- |
 | Hai máy cùng Wi-Fi nhưng `/list` không thấy nhau | Windows Firewall chặn gói UDP đến, hoặc Wi-Fi bật *AP Isolation* | Cho phép `python.exe` qua Firewall (mục Private & Public) hoặc dùng điểm phát sóng di động (Mobile Hotspot) làm mạng LAN chung. |
-| Lỗi `ModuleNotFoundError: No module named 'prompt_toolkit'` | Chưa cài thư viện phụ thuộc hoặc chưa kích hoạt đúng môi trường ảo `.venv` | Chạy lại `pip install prompt_toolkit` trong đúng cửa sổ Terminal đang dùng. |
+| Lỗi `ModuleNotFoundError` (`prompt_toolkit` hoặc `colorama`) | Chưa cài đủ thư viện phụ thuộc hoặc chưa kích hoạt đúng môi trường ảo `.venv` | Kích hoạt `.venv` và chạy lại `pip install prompt_toolkit colorama` trong đúng cửa sổ Terminal đang dùng. |
 | Nhập tên báo lỗi không hợp lệ | Tên chứa ký tự dấu gạch đứng `\|` hoặc chỉ toàn khoảng trắng | Ký tự `\|` được dùng làm dấu phân tách khung giao thức tầng ứng dụng, hãy chọn tên khác không chứa ký tự này. |
+| Lỗi gửi tệp báo `File too large` | Tệp tin vượt quá ngưỡng giới hạn `50 MB` (`MAX_FILE_SIZE`) của hệ thống | Chỉ gửi các tệp có dung lượng tối đa `50 MB` hoặc nén nhỏ tệp trước khi truyền. |
 
 ---
 
@@ -250,5 +251,5 @@ Nhập tên của bạn: Duc
 | STT | Họ và Tên | MSSV | Vai trò & Phân công chính |
 | :-: | :--- | :---: | :--- |
 | 1 | **Huỳnh Hoàng Nguyên** | `25120213` | Thiết kế & xây dựng phân hệ dò tìm ngang hàng **UDP Radar** (`broadcaster`, `listener`, `timeout_checker`). |
-| 2 | **Dương Hồng Đức** | `25120177` | Thiết kế giao thức phân khung **TCP**, truyền tệp tin bất đồng bộ đa luồng (`64 KB` chunking, _discard() cleanup). |
+| 2 | **Dương Hồng Đức** | `25120177` | Thiết kế giao thức phân khung **TCP**, truyền tệp tin bất đồng bộ đa luồng (`64 KB` chunking, `_discard()` cleanup). |
 | 3 | **Nguyễn Gia Huy** | `25120192` | Xây dựng giao diện **CLI bất đồng bộ** (`prompt_toolkit`), bộ điều phối phiên chat & kiểm thử tích hợp đa máy. |
