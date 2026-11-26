@@ -243,7 +243,6 @@ Nhập tên của bạn: Duc
 | Nhập tên báo `Name '...' is already taken` | Trong mạng LAN đang có người dùng khác sử dụng tên này | Chọn một tên hiển thị khác không trùng với danh sách vừa đồng bộ lúc khởi động. |
 | Hai máy cùng Wi-Fi nhưng `/list` không thấy nhau | Windows Firewall chặn gói UDP đến, hoặc Wi-Fi bật *AP Isolation* | Cho phép `python.exe` qua Firewall (mục Private & Public) hoặc dùng điểm phát sóng di động (Mobile Hotspot) làm mạng LAN chung. |
 | Lỗi `ModuleNotFoundError` (`prompt_toolkit` hoặc `colorama`) | Chưa cài đủ thư viện phụ thuộc hoặc chưa kích hoạt đúng môi trường ảo `.venv` | Kích hoạt `.venv` và chạy lại `pip install prompt_toolkit colorama` trong đúng cửa sổ Terminal đang dùng. |
-| Nhập tên báo lỗi không hợp lệ | Tên chứa ký tự dấu gạch đứng `\|` hoặc chỉ toàn khoảng trắng | Ký tự `\|` được dùng làm dấu phân tách khung giao thức tầng ứng dụng, hãy chọn tên khác không chứa ký tự này. |
 | Lỗi gửi tệp báo `File too large` | Tệp tin vượt quá ngưỡng giới hạn `50 MB` (`MAX_FILE_SIZE`) của hệ thống | Chỉ gửi các tệp có dung lượng tối đa `50 MB` hoặc nén nhỏ tệp trước khi truyền. |
 
 ---

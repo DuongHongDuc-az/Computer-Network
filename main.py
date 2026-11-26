@@ -291,7 +291,7 @@ async def main():
                 elif command == "/quit":
                     print_color(f"{C_SYS}[*] Disconnecting and exiting...")
                     shutdown(server_sock)
-                    sys.exit(0)
+                    break
                     
                 else:
                     print_color(f"{C_SYS}[!] Invalid command: {command}")
