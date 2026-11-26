@@ -230,10 +230,10 @@ async def main():
                                     print_color(f"{C_ME}[Me] {RESET}{command}")
                                     send_direct_msg(active,command)
                                 else:
-                                    print(f"> {command}")
+                                    print_color(f"> {command}")
                                     print(f"{C_SYS}[!] You haven't selected a chat partner. Use /chat [name] to start.")
                                 continue
-                            print(f"> {command}")
+                            print_color(f"> {command}")
 
                             parts = command.split()
                             if parts[0] == "/chat":
@@ -276,7 +276,10 @@ async def main():
                                         print_color(f"{C_SYS}[-] Allowed statuses are: online, busy, away")
                                 else:
                                     print_color(f"{C_SYS}[!] Invalid syntax. Usage: /status <status_name>")
-                                    
+
+                            elif command == "/help":
+                                print_color( f"{C_SYS}Commands: /chat <name> | /back | /list | /msg <name> <text> | /status <online|busy|away>\n"
+                                             f"          /file <name> <path> | /bye [name] | /conns | /quit")      
                             elif command == "/quit":
                                 print_color(f"{C_SYS}[*] Disconnecting and exiting...")
                                 shutdown(server_sock)
