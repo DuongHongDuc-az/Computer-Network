@@ -198,8 +198,8 @@ async def main():
     time.sleep(SCAN_SECONDS)
     while True:
         my_name = input("Enter your name: ").strip()
-        if not my_name or "|" in my_name:
-            print_color(f"{C_SYS}[!] Name cannot be empty or contain '|'. Please try again.")
+        if not my_name or "|" in my_name or any(ch.isspace() for ch in my_name):
+            print_color(f"{C_SYS}[!] Name cannot be empty, contain spaces, or '|'. Please try again.")
             continue
         with peer_lock:
             if any(existing.lower() == my_name.lower() for existing in online_peers):
@@ -299,7 +299,7 @@ async def main():
             except (KeyboardInterrupt, EOFError):
                 print_color(f"\n{C_SYS}[*] Shutting down system...")
                 shutdown(server_sock)
-                sys.exit(0)
+                break
     
 
 if __name__ == "__main__":
