@@ -15,8 +15,8 @@ from p2p_radar import (init_radar, init_status, online_peers, peer_lock,
                        broadcast_leave)
 from p2p_tcp import (connected_peers, conn_lock, send_hi, send_msg, send_bye,
                      tcp_receiver_thread, tcp_acceptor, close_connection, set_current_chat,
-                     get_current_chat,get_unseen_msg)
-from file_sender import start_send_file, cancel_all
+                     get_current_chat, get_unseen_msg, mark_closing, _drop_send_lock)
+from file_sender import start_send_file, cancel_all, cancel_peer
 
 MAX_FILE_SIZE = 50*1024*1024 # 50MB
 SCAN_SECONDS = 3.5
@@ -39,12 +39,14 @@ def drop_connection(name):
     with conn_lock:
         sock = connected_peers.pop(name, None)
     if sock:
+        mark_closing(sock)
         try:
             sock.shutdown(socket.SHUT_WR)
             time.sleep(0.05)
             sock.close()
         except OSError:
             pass
+        _drop_send_lock(sock)
 
 def cmd_chat(parts, my_name, my_port):
     if len(parts) < 2:
@@ -150,6 +152,7 @@ def cmd_bye(command):
     if not sock:
         print_color(f"{C_ERR}[!] Not connected to {target}.")
         return
+    cancel_peer(target)
     try:
         send_bye(sock)
     except OSError:
@@ -293,7 +296,7 @@ async def main():
                 else:
                     print_color(f"{C_SYS}[!] Invalid command: {command}")
                     
-            except KeyboardInterrupt:
+            except (KeyboardInterrupt, EOFError):
                 print_color(f"\n{C_SYS}[*] Shutting down system...")
                 shutdown(server_sock)
                 sys.exit(0)

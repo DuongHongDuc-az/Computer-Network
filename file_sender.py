@@ -97,3 +97,9 @@ def cancel_all():
         transfers = list(_active.values())
     for tr in transfers:
         tr.cancel()
+
+def cancel_peer(peer_name):
+    with _active_lock:
+        transfers = [tr for tr in _active.values() if tr.peer_name == peer_name]
+    for tr in transfers:
+        tr.cancel()
