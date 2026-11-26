@@ -85,7 +85,7 @@ def listener_thread():
                 peer_port = int(parts[2])
                 peer_status = parts[3]
                 
-                if peer_name == my_name and peer_port == my_port:
+                if my_name and peer_name.lower() == my_name.lower():
                     continue
                     
                 with peer_lock:
@@ -101,9 +101,11 @@ def listener_thread():
                     }
             elif len(parts) >= 3 and parts[0] == "LEAVE":
                 peer_name = parts[1]
+                peer_port = int(parts[2])
 
                 with peer_lock:
-                    if peer_name in online_peers:
+                    info = online_peers.get(peer_name)
+                    if info and info["port"] == peer_port and peer_name != my_name:
                         del online_peers[peer_name]
                         print_color(f"\r{C_SYS}[!] {peer_name} has left the network.")
         except Exception:

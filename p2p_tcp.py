@@ -1,7 +1,6 @@
 import socket
 import threading
 import time
-import os
 from typing import Tuple, Dict, Any, Optional
 import os
 import uti
@@ -16,6 +15,20 @@ MAX_CHUNK_RECV = 256 * 1024
 
 _send_locks = {}
 _send_locks_guard = threading.Lock()
+_closing_socks = set()
+_closing_lock = threading.Lock()
+
+def mark_closing(sock):
+    with _closing_lock:
+        _closing_socks.add(sock)
+
+def _is_closing(sock):
+    with _closing_lock:
+        return sock in _closing_socks
+
+def _unmark_closing(sock):
+    with _closing_lock:
+        _closing_socks.discard(sock)
 
 _unseen_msg = {}
 _unseen_lock = threading.Lock()
@@ -45,6 +58,7 @@ def add_unseen_msg(name,msg):
         if name not in _unseen_msg:
             _unseen_msg[name] = []
         _unseen_msg[name].append(msg)
+        return len(_unseen_msg[name])
 
 def get_unseen_msg(name):
     with _unseen_lock:
@@ -112,13 +126,15 @@ def send_file_abort(sock, tid):
     _send(sock, f"FABORT|{tid}|".encode('utf-8'))
     
 def close_connection(sock, say_bye=True):
+    mark_closing(sock)
     if say_bye:
         try:
             send_bye(sock)
         except OSError:
             pass
     try:
-        sock.shutdown(socket.SHUT_RDWR)
+        sock.shutdown(socket.SHUT_WR)
+        time.sleep(0.05)
     except OSError:
         pass
     try:
@@ -217,8 +233,8 @@ def tcp_receiver_thread(sock, peer_name=None):
         try:
             result = recv_frame(sock)
             if result is None:
-                print_color(f"{C_ERR}UNCONNECTED!")
-               
+                if not _is_closing(sock):
+                    print_color(f"\r{C_SYS}[!] {peer_name or 'Peer'} disconnected.")
                 break
             
             frame_type, data = result
@@ -232,11 +248,11 @@ def tcp_receiver_thread(sock, peer_name=None):
                 
             elif frame_type == "MSG":
                 sender = peer_name or '?'
-                if get_current_chat()==sender:
+                if get_current_chat() == sender:
                     print_color(f"\r{C_PEER}[{sender}] {RESET}{data['text']}")
                 else:
-                    add_unseen_msg(sender,data['text'])
-                    print_color(f"{C_WAIT}[*] New message from {sender} ({len(_unseen_msg[sender])} unread)")
+                    unread_count = add_unseen_msg(sender, data['text'])
+                    print_color(f"{C_WAIT}[*] New message from {sender} ({unread_count} unread)")
                                
             elif frame_type == "FSTART":
                 save_path = _unique_path(data["filename"])
@@ -283,6 +299,13 @@ def tcp_receiver_thread(sock, peer_name=None):
             elif frame_type == "BYE":
                 print_color(f"\n{C_SYS}Counterpart have closed.")
                 break
+        except OSError as e:
+            if not _is_closing(sock) and sock.fileno() != -1:
+                if getattr(e, "winerror", None) == 10054 or isinstance(e, ConnectionResetError):
+                    print_color(f"\r{C_SYS}[!] {peer_name or 'Peer'} forcibly closed the connection.")
+                else:
+                    print_color(f"\n{C_ERR}[!] Connection error: {e}")
+            break
         except Exception as e:
             print_color(f"\n {C_ERR}Error: {e}")
             break
@@ -295,11 +318,14 @@ def tcp_receiver_thread(sock, peer_name=None):
             del connected_peers[peer_name]
     if peer_name and get_current_chat() == peer_name:
         set_current_chat(None)
-        print_color(f"{C_SYS}[!] Left chat with {peer_name} due to disconnection.")
+        if not _is_closing(sock):
+            print_color(f"{C_SYS}[!] Left chat with {peer_name} due to disconnection.")
     try:
         sock.close()
     except OSError:
         pass
+    _unmark_closing(sock)
+    _drop_send_lock(sock)
 
 def tcp_acceptor(server_socket):
     while True:
@@ -307,5 +333,6 @@ def tcp_acceptor(server_socket):
            conn, addr = server_socket.accept()
            threading.Thread(target=tcp_receiver_thread, args=(conn, ), daemon=True).start()
         except Exception as e:
-            print_color(f"\n{C_ERR}Error Acceptor Threading or Server closed: {e}")
+            if server_socket.fileno() != -1:
+                print_color(f"\n{C_ERR}Error Acceptor Threading: {e}")
             break
