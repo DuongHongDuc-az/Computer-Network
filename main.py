@@ -205,7 +205,7 @@ async def main():
         init_radar(my_name, my_port) 
     
         print(f"\n[*] Starting Radar for [{my_name}]...")
-        print("Supported commands: /chat <name>, /list, /msg <name> <text>, /status <status_name>, /quit")
+        print("Supported commands: /chat <name>, /back, /list, /msg <name> <text>, /status <status_name>, /quit")
         print("           /file <name> <path>, /bye <name>, /conns, /quit")
         print("-" * 50)
         with patch_stdout():
@@ -224,18 +224,16 @@ async def main():
                             command = command.strip()
 
                             if command == "":
-                                continue
-                            if active and command != "":
-                                print_color(f"{C_ME}[Me] {RESET}{command}")
-                            elif command != "":
-                                print(f"> {command}")
-
+                                continue            
                             if not command.startswith("/"):
                                 if active:
+                                    print_color(f"{C_ME}[Me] {RESET}{command}")
                                     send_direct_msg(active,command)
                                 else:
+                                    print(f"> {command}")
                                     print(f"{C_SYS}[!] You haven't selected a chat partner. Use /chat [name] to start.")
                                 continue
+                            print(f"> {command}")
 
                             parts = command.split()
                             if parts[0] == "/chat":
@@ -289,7 +287,7 @@ async def main():
                                 
                         except KeyboardInterrupt:
                             print_color(f"\n{C_SYS}[*] Shutting down system...")
-                            shutdown()
+                            shutdown(server_sock)
                             sys.exit(0)
     
 
