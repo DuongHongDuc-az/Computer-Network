@@ -227,13 +227,13 @@ async def main():
                             if active and command != "":
                                 print_color(f"{C_ME}[Me] {RESET}{command}")
                             elif command != "":
-                                print(f"> {command}")
+                                print_color(f"> {command}")
 
                             if not command.startswith("/"):
                                 if active:
                                     send_direct_msg(active,command)
                                 else:
-                                    print(f"{C_SYS}[!] You haven't selected a chat partner. Use /chat [name] to start.")
+                                    print_color(f"{C_SYS}[!] You haven't selected a chat partner. Use /chat [name] to start.")
                                 continue
 
                             parts = command.split()
@@ -288,7 +288,7 @@ async def main():
                                 
                         except KeyboardInterrupt:
                             print_color(f"\n{C_SYS}[*] Shutting down system...")
-                            shutdown()
+                            shutdown(server_sock)
                             sys.exit(0)
     
 
