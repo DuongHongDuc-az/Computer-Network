@@ -84,12 +84,12 @@ def listener_thread():
                 peer_name = parts[1]
                 peer_port = int(parts[2])
                 peer_status = parts[3]
-                
+                     
                 if my_name and peer_name.lower() == my_name.lower():
                     continue
                     
                 with peer_lock:
-                    if peer_name not in online_peers:
+                    if peer_name not in online_peers and my_name:
                         print_color(f"\r{C_SYS}[*] Radar detected new peer: {peer_name} ({addr[0]}:{peer_port})")
                        
                         
